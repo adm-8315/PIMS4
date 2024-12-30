@@ -1,0 +1,86 @@
+services:
+  web:
+    build: 
+      context: ./
+      dockerfile: docker/Dockerfile-php
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/php.ini:/usr/local/etc/php/php.ini
+      - ./logs/apache:/var/log/apache2
+    ports:
+      - "80:80"
+    depends_on:
+      - db
+    environment:
+      - MARIADB_HOST=db
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - APP_ENV=${APP_ENV:-development}
+    networks:
+      - pims-network
+
+  db:
+    image: mariadb:10.11
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d
+      - ./backup:/backup
+      - ./logs/mysql:/var/log/mysql
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+    ports:
+      - "3308:3306"
+    command: [
+      '--character-set-server=utf8mb4',
+      '--collation-server=utf8mb4_unicode_ci',
+      '--skip-character-set-client-handshake',
+      '--max_allowed_packet=256M',
+      '--innodb_buffer_pool_size=1G',
+      '--innodb_log_file_size=256M',
+      '--innodb_flush_log_at_trx_commit=2',
+      '--query_cache_type=1',
+      '--query_cache_size=128M',
+      '--performance_schema=ON',
+      '--slow_query_log=1',
+      '--slow_query_log_file=/var/log/mysql/slow_query.log',
+      '--long_query_time=2'
+    ]
+    networks:
+      - pims-network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "82:80"
+    environment:
+      - PMA_HOST=db
+      - PMA_USER=${MARIADB_USER}
+      - PMA_PASSWORD=${MARIADB_PASSWORD}
+      - UPLOAD_LIMIT=256M
+    depends_on:
+      - db
+    networks:
+      - pims-network
+
+  backup:
+    image: mariadb:10.11
+    volumes:
+      - ./backup:/backup
+      - mysql_data:/var/lib/mysql:ro
+    command: /bin/true
+    depends_on:
+      - db
+    networks:
+      - pims-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  pims-network:
+    driver: bridge
